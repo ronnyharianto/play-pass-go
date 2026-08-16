@@ -307,6 +307,72 @@ async function main(): Promise<void> {
   assert(s7.hasRolled === false, 'next player starts unrolled');
   assert(s7.gamePhase === 'playing', 'game continues with 2 players left');
 
+  // ---------------------------------------------------------------
+  console.log('\n[8] A trade can be done again after a completed trade');
+  get().resetGame();
+  get().addPlayer('P1', '🐶');
+  get().addPlayer('P2', '🎩');
+  get().startGame();
+  useGameStore.setState((s) => ({
+    players: s.players.map((p, i) =>
+      i === 0
+        ? { ...p, cash: 5000, properties: [1, 3] }
+        : { ...p, cash: 5000, properties: [5] }
+    ),
+    properties: {
+      1: { owner: s.players[0].id, houses: 0, isMortgaged: false },
+      3: { owner: s.players[0].id, houses: 0, isMortgaged: false },
+      5: { owner: s.players[1].id, houses: 0, isMortgaged: false },
+    },
+  }));
+  const p1Id = get().players[0].id;
+  const p2Id = get().players[1].id;
+  get().startTrade();
+  assert(get().trade?.phase === 'proposing', 'first trade starts in proposing phase');
+  get().sendTradeOffer({
+    toId: p2Id,
+    offerProps: [1],
+    requestProps: [5],
+    offerCash: 0,
+    requestCash: 0,
+  });
+  assert(get().trade?.phase === 'review', 'first offer reaches review');
+  get().acceptTrade();
+  assert(get().trade === null, 'first trade completed');
+  assert(get().properties[1].owner === p2Id, 'tile 1 transferred to P2');
+  assert(get().properties[5].owner === p1Id, 'tile 5 transferred to P1');
+
+  // Regression: the next trade must work fresh. (Previously the modal kept
+  // its draft selections, so a second offer failed silently - dead button.)
+  get().startTrade();
+  assert(get().trade?.phase === 'proposing', 'second trade starts after completion');
+  get().sendTradeOffer({
+    toId: p2Id,
+    offerProps: [3],
+    requestProps: [1],
+    offerCash: 0,
+    requestCash: 0,
+  });
+  assert(get().trade?.phase === 'review', 'second offer reaches review (trade can be done again)');
+  get().declineTrade();
+  assert(get().trade === null, 'second trade closed cleanly');
+
+  // Defensive: offering a property the player no longer owns must surface a
+  // message instead of silently doing nothing.
+  get().startTrade();
+  get().sendTradeOffer({
+    toId: p2Id,
+    offerProps: [1], // P1 traded tile 1 away in the first trade
+    requestProps: [],
+    offerCash: 0,
+    requestCash: 0,
+  });
+  assert(
+    get().trade?.phase === 'proposing' && get().message.length > 0,
+    'stale property offer is rejected with a message (no silent dead button)'
+  );
+  get().closeTrade();
+
   console.log(failures === 0 ? '\nAll bug-fix checks passed ✅' : `\n${failures} check(s) FAILED ❌`);
   process.exit(failures === 0 ? 0 : 1);
 }

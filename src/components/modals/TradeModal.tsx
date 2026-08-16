@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { BOARD_SPACES } from '../../engine/boardData';
 import { cn } from '../../utils/cn';
@@ -21,6 +21,21 @@ export const TradeModal: React.FC = () => {
   const [requestProps, setRequestProps] = useState<number[]>([]);
   const [offerCash, setOfferCash] = useState('');
   const [requestCash, setRequestCash] = useState('');
+
+  // The modal stays mounted between trades (it just renders null), so the
+  // draft state above persists. Wipe it whenever a new trade session starts
+  // (trade closed/completed, or a fresh proposing phase) — otherwise stale
+  // selections, e.g. properties that were already traded away, make the
+  // next Send Offer fail silently with no response.
+  useEffect(() => {
+    if (!trade || trade.phase === 'proposing') {
+      setTargetId(null);
+      setOfferProps([]);
+      setRequestProps([]);
+      setOfferCash('');
+      setRequestCash('');
+    }
+  }, [trade]);
 
   if (!trade) return null;
 

@@ -1470,7 +1470,13 @@ export const useGameStore = create<GameState>()(
 
         for (const tileId of offerProps) {
           const prop = properties[tileId];
-          if (!prop || prop.owner !== from.id || !from.properties.includes(tileId)) return;
+          if (!prop || prop.owner !== from.id || !from.properties.includes(tileId)) {
+            set({
+              message:
+                'You no longer own a property you selected - re-select it and try again.',
+            });
+            return;
+          }
           if (prop.houses > 0) {
             set({ message: 'Sell houses/hotels before trading those properties.' });
             return;
@@ -1478,7 +1484,13 @@ export const useGameStore = create<GameState>()(
         }
         for (const tileId of requestProps) {
           const prop = properties[tileId];
-          if (!prop || prop.owner !== to.id || !to.properties.includes(tileId)) return;
+          if (!prop || prop.owner !== to.id || !to.properties.includes(tileId)) {
+            set({
+              message:
+                'The other player no longer owns a property you requested - re-select it and try again.',
+            });
+            return;
+          }
           if (prop.houses > 0) {
             set({
               message: 'The requested property has houses/hotels - sell them before trading.',
