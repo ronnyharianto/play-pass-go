@@ -1,8 +1,8 @@
-import React from 'react';
-import { useGameStore } from '../../store/gameStore';
-import { BOARD_SPACES } from '../../engine/boardData';
-import { DiceBox } from '../controls/DiceBox';
-import { cn } from '../../utils/cn';
+import React from "react";
+import { useGameStore } from "../../store/gameStore";
+import { BOARD_SPACES } from "../../engine/boardData";
+import { DiceBox } from "../controls/DiceBox";
+import { cn } from "../../utils/cn";
 
 /**
  * Center panel of the Monopoly board.
@@ -46,37 +46,37 @@ export const CenterPanel: React.FC = () => {
   const currentTileProp = properties[currentTile.id];
   const isBuyable = Boolean(
     currentTile.cost &&
-      (currentTile.type === 'property' ||
-        currentTile.type === 'railroad' ||
-        currentTile.type === 'utility') &&
-      (!currentTileProp || !currentTileProp.owner) &&
-      // A tile the current player declined (auctioned, no sale) can't be
-      // bought or re-auctioned until the next roll/turn.
-      currentTile.id !== declinedTile
+    (currentTile.type === "property" ||
+      currentTile.type === "railroad" ||
+      currentTile.type === "utility") &&
+    (!currentTileProp || !currentTileProp.owner) &&
+    // A tile the current player declined (auctioned, no sale) can't be
+    // bought or re-auctioned until the next roll/turn.
+    currentTile.id !== declinedTile,
   );
 
   const canBuy = Boolean(
     !isMoving &&
-      !auction &&
-      !trade &&
-      isBuyable &&
-      currentPlayer.cash >= (currentTile.cost || 0) &&
-      (!currentTileProp || currentTileProp.owner === null)
+    !auction &&
+    !trade &&
+    isBuyable &&
+    currentPlayer.cash >= (currentTile.cost || 0) &&
+    (!currentTileProp || currentTileProp.owner === null),
   );
 
   // "Decline & Auction" is offered on any unowned property the current
   // player lands on — even when they cannot afford to buy it.
   const isAuctionable = Boolean(
-    !isMoving && !showDebtResolution && !auction && !trade && isBuyable
+    !isMoving && !showDebtResolution && !auction && !trade && isBuyable,
   );
 
   const canTrade = Boolean(
     !isRolling &&
-      !isMoving &&
-      !showDebtResolution &&
-      !trade &&
-      !auction &&
-      players.filter((p) => !p.isBankrupt).length >= 2
+    !isMoving &&
+    !showDebtResolution &&
+    !trade &&
+    !auction &&
+    players.filter((p) => !p.isBankrupt).length >= 2,
   );
 
   return (
@@ -104,15 +104,20 @@ export const CenterPanel: React.FC = () => {
             <div
               key={p.id}
               className={cn(
-                'p-2 sm:p-3 rounded-lg border flex flex-col justify-between gap-1 sm:gap-2 min-w-0 transition-all',
+                // overflow-hidden keeps content inside the card when the grid
+                // row is shorter than the content, so nothing ever renders
+                // outside the card's border.
+                "p-2 sm:p-3 rounded-lg border flex flex-col justify-between gap-1 sm:gap-2 min-w-0 overflow-hidden transition-all",
                 isCurrent
-                  ? 'bg-emerald-900/70 border-emerald-400 ring-1 ring-emerald-500 shadow-lg shadow-emerald-950'
-                  : 'bg-slate-900/60 border-slate-700 opacity-80'
+                  ? "bg-emerald-900/70 border-emerald-400 ring-1 ring-emerald-500 shadow-lg shadow-emerald-950"
+                  : "bg-slate-900/60 border-slate-700 opacity-80",
               )}
             >
               <div className="flex items-center justify-between gap-1 min-w-0">
                 <span className="font-bold text-xs sm:text-lg truncate flex items-center gap-1.5">
-                  <span className="text-lg sm:text-3xl shrink-0">{p.token}</span>
+                  <span className="text-xl sm:text-2xl lg:text-4xl xl:text-5xl shrink-0">
+                    {p.token}
+                  </span>
                   <span className="truncate">{p.name}</span>
                 </span>
                 {isCurrent && (
@@ -121,26 +126,43 @@ export const CenterPanel: React.FC = () => {
                   </span>
                 )}
               </div>
-              <div className="flex items-center justify-between text-sm sm:text-xl font-semibold">
-                <span className="text-amber-400 font-extrabold">${p.cash}</span>
-                <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-sm">
+              <div className="flex items-center justify-between gap-1 min-w-0 text-sm sm:text-xl font-semibold">
+                <span className="text-amber-400 font-extrabold shrink-0">
+                  ${p.cash}
+                </span>
+                {/* Cash on the left; jail-free cards, position and the
+                    property count share one row so the card stays compact -
+                    no separate bottom row that can overflow a short card. */}
+                <div className="flex items-center justify-end gap-1.5 sm:gap-2 text-[10px] sm:text-sm flex-wrap min-w-0">
                   {(p.getOutOfJailCards ?? 0) > 0 && (
                     <span
-                      className="text-violet-400 font-bold"
+                      className="text-violet-400 font-bold shrink-0"
                       title="Get Out of Jail Free cards"
                     >
                       🔑×{p.getOutOfJailCards}
                     </span>
                   )}
-                  <span className="text-slate-400 font-semibold">
+                  <span
+                    className="text-slate-400 font-semibold shrink-0"
+                    title="Position on the board"
+                  >
                     Pos: {p.position}
                   </span>
+                  <span className="text-slate-500 shrink-0" aria-hidden="true">
+                    |
+                  </span>
+                  <span
+                    className="text-slate-400 font-semibold shrink-0"
+                    title={`${p.properties.length} properties owned`}
+                  >
+                    🧾 Owned: {p.properties.length}
+                  </span>
+                  {p.isBankrupt && (
+                    <span className="text-red-400 font-bold shrink-0">
+                      BANKRUPT
+                    </span>
+                  )}
                 </div>
-              </div>
-              {/* Extra info row — hidden on small screens to stay compact */}
-              <div className="hidden sm:flex items-center justify-between text-xs text-slate-400 border-t border-slate-700/70 pt-1.5">
-                <span>🏠 {p.properties.length} properties</span>
-                {p.isBankrupt && <span className="text-red-400 font-bold">BANKRUPT</span>}
               </div>
             </div>
           );
@@ -164,7 +186,12 @@ export const CenterPanel: React.FC = () => {
               <>
                 <button
                   onClick={payBail}
-                  disabled={currentPlayer.cash < 50 || isRolling || isMoving || showDebtResolution}
+                  disabled={
+                    currentPlayer.cash < 50 ||
+                    isRolling ||
+                    isMoving ||
+                    showDebtResolution
+                  }
                   className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-bold rounded-lg text-[10px] sm:text-sm shadow transition-all active:scale-95 cursor-pointer"
                 >
                   Pay $50 Bail
@@ -185,13 +212,17 @@ export const CenterPanel: React.FC = () => {
                 ⚠️ Turn 3 / last chance — must pay bail
                 {currentPlayer.cash < 50 &&
                   (currentPlayer.getOutOfJailCards ?? 0) === 0 && (
-                    <> — can&apos;t afford bail; rolling will force bankruptcy</>
+                    <>
+                      {" "}
+                      — can&apos;t afford bail; rolling will force bankruptcy
+                    </>
                   )}
               </span>
             )}
             {hasRolled && (
               <span className="text-[9px] sm:text-xs text-slate-300 font-bold self-center text-center">
-                Your turn in Jail is over — End your turn. Jail options return on your next turn.
+                Your turn in Jail is over — End your turn. Jail options return
+                on your next turn.
               </span>
             )}
           </div>
@@ -205,10 +236,16 @@ export const CenterPanel: React.FC = () => {
           {!hasRolled ? (
             <button
               onClick={rollDice}
-              disabled={isRolling || isMoving || showDebtResolution || Boolean(trade) || Boolean(auction)}
+              disabled={
+                isRolling ||
+                isMoving ||
+                showDebtResolution ||
+                Boolean(trade) ||
+                Boolean(auction)
+              }
               className="px-5 sm:px-6 py-2 sm:py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg shadow-md transition-all active:scale-95 text-sm sm:text-base cursor-pointer"
             >
-              {isRolling ? 'Rolling...' : isMoving ? 'Moving...' : 'Roll Dice'}
+              {isRolling ? "Rolling..." : isMoving ? "Moving..." : "Roll Dice"}
             </button>
           ) : (
             <button
@@ -216,15 +253,21 @@ export const CenterPanel: React.FC = () => {
               // Clicking End Turn while standing on an unowned property is the
               // "decline to buy" — the store auto-starts the auction instead,
               // so the label says so.
-              disabled={isRolling || isMoving || showDebtResolution || Boolean(trade) || Boolean(auction)}
+              disabled={
+                isRolling ||
+                isMoving ||
+                showDebtResolution ||
+                Boolean(trade) ||
+                Boolean(auction)
+              }
               className={cn(
-                'px-5 sm:px-6 py-2 sm:py-2.5 disabled:opacity-50 text-white font-bold rounded-lg shadow-md transition-all active:scale-95 text-sm sm:text-base cursor-pointer',
+                "px-5 sm:px-6 py-2 sm:py-2.5 disabled:opacity-50 text-white font-bold rounded-lg shadow-md transition-all active:scale-95 text-sm sm:text-base cursor-pointer",
                 isAuctionable
-                  ? 'bg-cyan-600 hover:bg-cyan-500'
-                  : 'bg-slate-700 hover:bg-slate-600'
+                  ? "bg-cyan-600 hover:bg-cyan-500"
+                  : "bg-slate-700 hover:bg-slate-600",
               )}
             >
-              {isAuctionable ? 'End Turn & Auction' : 'End Turn'}
+              {isAuctionable ? "End Turn & Auction" : "End Turn"}
             </button>
           )}
 
@@ -260,10 +303,10 @@ export const CenterPanel: React.FC = () => {
       {transactionPopup && (
         <div
           className={cn(
-            'absolute left-1/2 top-8 -translate-x-1/2 z-50 px-4 py-2 rounded-xl font-extrabold text-lg shadow-2xl animate-bounce tracking-wide',
-            transactionPopup.type === 'gain'
-              ? 'bg-emerald-500 text-slate-950 border-2 border-emerald-300'
-              : 'bg-red-600 text-white border-2 border-red-300'
+            "absolute left-1/2 top-8 -translate-x-1/2 z-50 px-4 py-2 rounded-xl font-extrabold text-lg shadow-2xl animate-bounce tracking-wide",
+            transactionPopup.type === "gain"
+              ? "bg-emerald-500 text-slate-950 border-2 border-emerald-300"
+              : "bg-red-600 text-white border-2 border-red-300",
           )}
         >
           {transactionPopup.text}
@@ -278,14 +321,18 @@ export const CenterPanel: React.FC = () => {
               ⚠️ DEBT RESOLUTION ⚠️
             </h3>
             <p className="text-white font-bold mb-3">
-              {currentPlayer.name} owes{' '}
+              {currentPlayer.name} owes{" "}
               <span className="text-red-400 text-xl">${debtAmount}</span>!
             </p>
             <div className="flex flex-col gap-2 items-center">
-              <p className="text-slate-300 text-sm">Choose an action to resolve debt:</p>
+              <p className="text-slate-300 text-sm">
+                Choose an action to resolve debt:
+              </p>
               <div className="flex gap-2 flex-wrap justify-center">
                 <button
-                  onClick={() => payDebt(Math.min(currentPlayer.cash, debtAmount))}
+                  onClick={() =>
+                    payDebt(Math.min(currentPlayer.cash, debtAmount))
+                  }
                   disabled={currentPlayer.cash <= 0}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg text-sm shadow transition-all active:scale-95"
                 >
@@ -299,7 +346,8 @@ export const CenterPanel: React.FC = () => {
                 </button>
               </div>
               <p className="text-slate-400 text-xs mt-2">
-                You can also mortgage properties first to raise cash, then pay debt.
+                You can also mortgage properties first to raise cash, then pay
+                debt.
               </p>
             </div>
           </div>
