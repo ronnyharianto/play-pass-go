@@ -43,7 +43,7 @@ async function waitFor(
 
 async function main(): Promise<void> {
   const { useGameStore } = await import('../store/gameStore');
-  const { CHANCE_CARDS } = await import('../engine/chanceCards');
+  const { CHANCE_CARDS, shuffleChanceDeck } = await import('../engine/chanceCards');
   const get = () => useGameStore.getState();
   // Use the EXACT card text from the module to avoid encoding mismatches.
   const boardwalkCardText =
@@ -438,6 +438,44 @@ async function main(): Promise<void> {
     'setManualDice is a no-op outside development'
   );
   env.NODE_ENV = savedNodeEnv ?? '';
+
+  // ---------------------------------------------------------------
+  console.log('\n[10] Money-only cards do NOT re-draw from the same tile');
+  // P1 lands on Chance (7) and draws a money-only card. The card effect must
+  // not re-resolve the Chance tile - that used to draw ANOTHER card, and every
+  // Confirm kept drawing until a movement card finally left the tile.
+  get().resetGame();
+  get().addPlayer('P1', '🐶');
+  get().addPlayer('P2', '🎩');
+  get().startGame();
+  const dividendText =
+    CHANCE_CARDS.find((c) => c.text.includes('dividend'))?.text ?? '';
+  useGameStore.setState((s) => ({
+    currentPlayerIndex: 0,
+    players: s.players.map((p, i) =>
+      i === 0 ? { ...p, position: 7, cash: 100 } : p
+    ),
+    chanceDeck: shuffleChanceDeck(),
+  }));
+  const deckBefore = get().chanceDeck.length;
+  useGameStore.setState({ pendingCard: { type: 'chance', text: dividendText } });
+  get().applyCardEffect();
+  const cardState = get();
+  console.log(
+    `  (P1 at ${cardState.players[0].position}, cash ${cardState.players[0].cash}, pendingCard: ${cardState.pendingCard ? 'STILL A CARD!' : 'none'}, deck ${cardState.chanceDeck.length}/${deckBefore})`
+  );
+  assert(
+    cardState.pendingCard === null,
+    'money-only card does not trigger a follow-up card draw'
+  );
+  assert(
+    cardState.chanceDeck.length === deckBefore,
+    'no extra card was consumed from the deck'
+  );
+  assert(
+    cardState.players[0].cash === 150,
+    'dividend applied exactly once (+$50)'
+  );
 
   console.log(failures === 0 ? '\nAll bug-fix checks passed ✅' : `\n${failures} check(s) FAILED ❌`);
   process.exit(failures === 0 ? 0 : 1);

@@ -1273,8 +1273,10 @@ export const useGameStore = create<GameState>()(
           // If the card MOVED the player (and didn't send them to jail or
           // trigger debt resolution), resolve the destination tile just like
           // a normal landing: rent on owned property, tax, Free Parking, or
-          // a follow-up card draw.
-          if (!jailedByCard && unpaidDebt === 0) {
+          // a follow-up card draw. Money-only cards leave the player on the
+          // same Chance/Community Chest tile, so they must NOT re-resolve it
+          // (that would draw another card and chain forever).
+          if (!jailedByCard && unpaidDebt === 0 && movedByCard) {
             // Official rule: the "nearest Railroad" card charges DOUBLE rent.
             get().resolveCardLanding(
               currentPlayerIndex,
