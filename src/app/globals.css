@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Candy Arcade property-group palette (cheap -> expensive around the board) */
+  --color-group-brown: #b5651d;
+  --color-group-lightblue: #35d0e8;
+  --color-group-pink: #ff4fa3;
+  --color-group-orange: #ff9a3d;
+  --color-group-red: #ff3b3b;
+  --color-group-yellow: #ffe14d;
+  --color-group-green: #2fd661;
+  --color-group-darkblue: #5f6bff;
+  --color-group-railroad: #9aa5b1;
+  --color-group-utility: #cfc9bd;
+  /* Classic light-green board felt */
+  --color-board-frame: #cde6d0;
+}
+
+body {
+  @apply bg-slate-900 text-slate-100 font-sans antialiased;
+}
+
+/* Property board grid */
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  grid-template-rows: repeat(11, minmax(0, 1fr));
+}
+
+/* Token hop animation when moving tile-by-tile */
+@keyframes token-hop {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-6px) scale(1.12);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+.token-moving {
+  animation: token-hop 0.22s ease-out;
+}
