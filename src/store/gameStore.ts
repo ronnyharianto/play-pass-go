@@ -1201,53 +1201,141 @@ export const useGameStore = create<GameState>()(
         const jailedByCard = Boolean(updatedPlayers[currentPlayerIndex]?.inJail);
         if (jailedByCard) playSound('jail');
 
-        const nextCardState: {
-          players: Player[];
-          properties: PropertiesMap;
-          freeParkingPot: number;
-          message: string;
-          pendingCard: null;
-          hasRolled: boolean;
-          showDebtResolution?: boolean;
-          debtAmount?: number;
-          debtOwedTo?: string | null;
-        } = {
-          players: updatedPlayers,
-          properties: updatedProps,
-          freeParkingPot: Math.max(0, updatedPot),
-          message: patch.message ?? get().message,
-          pendingCard: null,
-          hasRolled: jailedByCard ? true : get().hasRolled,
-        };
+        const newPosition = updatedPlayers[currentPlayerIndex]?.position;
+        const movedByCard =
+          newPosition !== undefined && newPosition !== oldPosition;
 
-        if (unpaidDebt > 0) {
-          // The card cost more than the player could pay - pause for debt
-          // resolution (mortgage / sell / bankruptcy) instead of silently
-          // clamping cash to 0. The shortfall is owed to the Free Parking pot.
-          nextCardState.showDebtResolution = true;
-          nextCardState.debtAmount = unpaidDebt;
-          nextCardState.debtOwedTo = 'pot';
-          if (!jailedByCard) {
-            nextCardState.message = `${nextCardState.message} ${updatedPlayers[currentPlayerIndex]?.name ?? 'Player'} owes $${unpaidDebt} to the Free Parking pot.`;
+        // Apply the card's full effect and then resolve the destination tile
+        // (rent, tax, Free Parking, Go To Jail, or a follow-up card draw).
+        // Runs AFTER the patch is committed so get() sees the final position.
+        const commitCard = (movingStep: number) => {
+          const nextCardState: {
+            players: Player[];
+            properties: PropertiesMap;
+            freeParkingPot: number;
+            message: string;
+            pendingCard: null;
+            hasRolled: boolean;
+            isMoving: boolean;
+            movingPlayerId: null;
+            movingStep: number;
+            showDebtResolution?: boolean;
+            debtAmount?: number;
+            debtOwedTo?: string | null;
+          } = {
+            players: updatedPlayers,
+            properties: updatedProps,
+            freeParkingPot: Math.max(0, updatedPot),
+            message: patch.message ?? get().message,
+            pendingCard: null,
+            hasRolled: jailedByCard ? true : get().hasRolled,
+            isMoving: false,
+            movingPlayerId: null,
+            movingStep,
+          };
+
+          if (unpaidDebt > 0) {
+            // The card cost more than the player could pay - pause for debt
+            // resolution (mortgage / sell / bankruptcy) instead of silently
+            // clamping cash to 0. The shortfall is owed to the Free Parking pot.
+            nextCardState.showDebtResolution = true;
+            nextCardState.debtAmount = unpaidDebt;
+            nextCardState.debtOwedTo = 'pot';
+            if (!jailedByCard) {
+              nextCardState.message = `${nextCardState.message} ${updatedPlayers[currentPlayerIndex]?.name ?? 'Player'} owes $${unpaidDebt} to the Free Parking pot.`;
+            }
           }
-        }
 
-        set(nextCardState);
+          set(nextCardState);
 
-        // If the card MOVED the player (and didn't send them to jail or
-        // trigger debt resolution), resolve the destination tile just like a
-        // normal landing: rent on owned property, tax, Free Parking, or a
-        // follow-up card draw.
-        if (!jailedByCard && !nextCardState.showDebtResolution) {
-          const newPosition = updatedPlayers[currentPlayerIndex]?.position;
-          if (newPosition !== undefined && newPosition !== oldPosition) {
+          // If the card MOVED the player (and didn't send them to jail or
+          // trigger debt resolution), resolve the destination tile just like
+          // a normal landing: rent on owned property, tax, Free Parking, or
+          // a follow-up card draw.
+          if (!jailedByCard && unpaidDebt === 0) {
             // Official rule: the "nearest Railroad" card charges DOUBLE rent.
             get().resolveCardLanding(
               currentPlayerIndex,
               cardText.includes('nearest Railroad')
             );
           }
+        };
+
+        // Money-only cards (dividends, fees, repairs, jail-free cards, ...)
+        // apply instantly, exactly as before.
+        if (!movedByCard) {
+          commitCard(0);
+          return;
         }
+
+        // Movement card: animate the token hopping tile-by-tile (the same
+        // token-hop used by dice rolls) before committing the card's effect.
+        // Direction follows the card: "Go back 3 spaces" walks backwards, and
+        // Jail cards walk the way that avoids passing GO (no $200 shown).
+        const direction: 'forward' | 'backward' = cardText.includes(
+          'back 3 spaces'
+        )
+          ? 'backward'
+          : cardText.includes('Jail') && oldPosition > 10
+            ? 'backward'
+            : 'forward';
+
+        const path: number[] = [];
+        let pos = oldPosition;
+        while (pos !== newPosition) {
+          pos =
+            direction === 'forward' ? (pos + 1) % 40 : (pos - 1 + 40) % 40;
+          path.push(pos);
+        }
+
+        if (path.length === 0) {
+          commitCard(0);
+          return;
+        }
+
+        // Close the card modal and start the token hop. The hop cadence
+        // scales with distance so long trips (e.g. across the whole board)
+        // stay snappy while short hops keep the dice-roll rhythm.
+        set({
+          pendingCard: null,
+          isMoving: true,
+          movingPlayerId: playerId,
+          movingStep: 0,
+        });
+
+        const stepInterval = Math.min(
+          220,
+          Math.max(60, Math.round(1600 / path.length))
+        );
+
+        let i = 0;
+        const advance = () => {
+          const stepPos = path[i];
+          // Forward card moves that cross GO collect $200 (the patch already
+          // credits the cash; the popup is purely visual feedback).
+          if (direction === 'forward' && stepPos === 0) {
+            get().triggerPopup('+$200 Pass GO', 'gain');
+            playSound('gain');
+          }
+
+          const current = get().players;
+          const updated = [...current];
+          updated[currentPlayerIndex] = {
+            ...updated[currentPlayerIndex],
+            position: stepPos,
+          };
+          i += 1;
+
+          if (i < path.length) {
+            set({ players: updated, movingStep: i });
+            setTimeout(advance, stepInterval);
+          } else {
+            // Final step: land, then commit the card's full effect.
+            set({ players: updated, movingStep: i });
+            commitCard(i);
+          }
+        };
+        setTimeout(advance, stepInterval);
       },
 
       // Resolves what happens when a movement card drops the player on a new

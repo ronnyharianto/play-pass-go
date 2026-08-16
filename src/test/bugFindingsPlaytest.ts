@@ -23,6 +23,24 @@ function assert(cond: boolean, label: string): void {
   }
 }
 
+// Card movement is now animated (tile-by-tile hop), so store assertions
+// must wait for the animation to finish before checking the result.
+async function waitFor(
+  cond: () => boolean,
+  label: string,
+  timeoutMs = 8000
+): Promise<void> {
+  const start = Date.now();
+  while (!cond()) {
+    if (Date.now() - start > timeoutMs) {
+      assert(false, `${label} (timed out)`);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert(true, label);
+}
+
 async function main(): Promise<void> {
   const { useGameStore } = await import('../store/gameStore');
   const { CHANCE_CARDS } = await import('../engine/chanceCards');
@@ -51,9 +69,12 @@ async function main(): Promise<void> {
   const p2CashBefore = get().players[1].cash;
   useGameStore.setState({ pendingCard: { type: 'chance', text: boardwalkCardText } });
   get().applyCardEffect();
+  await waitFor(
+    () => get().players[1].position === 39 && !get().isMoving,
+    'P2 advanced to Boardwalk'
+  );
   const p2 = get().players[1];
   console.log(`  (P2 moved to ${p2.position}, cash ${p2.cash} vs ${p2CashBefore} before)`);
-  assert(p2.position === 39, 'P2 advanced to Boardwalk');
   assert(
     p2.cash < p2CashBefore,
     `P2 paid rent for landing on owned Boardwalk hotel (got cash ${p2.cash})`
@@ -83,9 +104,12 @@ async function main(): Promise<void> {
   const rrCashBefore = get().players[1].cash;
   useGameStore.setState({ pendingCard: { type: 'chance', text: rrCardText } });
   get().applyCardEffect();
+  await waitFor(
+    () => get().players[1].position === 25 && !get().isMoving,
+    'P2 advanced to the nearest Railroad (25)'
+  );
   const rrPlayer = get().players[1];
   console.log(`  (RR card: P2 moved to ${rrPlayer.position}, paid $${rrCashBefore - rrPlayer.cash})`);
-  assert(rrPlayer.position === 25, 'P2 advanced to the nearest Railroad (25)');
   assert(
     rrCashBefore - rrPlayer.cash === 400,
     `nearest-Railroad card charged DOUBLE rent ($400 for 4 railroads, got $${rrCashBefore - rrPlayer.cash})`
@@ -108,9 +132,12 @@ async function main(): Promise<void> {
   const fpCashBefore = get().players[1].cash;
   useGameStore.setState({ pendingCard: { type: 'chance', text: back3Text } });
   get().applyCardEffect();
+  await waitFor(
+    () => get().players[1].position === 20 && !get().isMoving,
+    'Go back 3 lands on Free Parking (20)'
+  );
   const fpState = get();
   console.log(`  (Go back 3: P2 to ${fpState.players[1].position}, pot ${fpState.freeParkingPot})`);
-  assert(fpState.players[1].position === 20, 'Go back 3 lands on Free Parking (20)');
   assert(
     fpState.players[1].cash === fpCashBefore + 150 && fpState.freeParkingPot === 0,
     'Free Parking pot was collected after the card move'
@@ -125,12 +152,12 @@ async function main(): Promise<void> {
   }));
   useGameStore.setState({ pendingCard: { type: 'chance', text: back3Text } });
   get().applyCardEffect();
-  console.log(`  (Go back 3 from 39: P2 to ${get().players[1].position}, new card: ${get().pendingCard?.type ?? 'NONE'})`);
-  assert(get().players[1].position === 36, 'Go back 3 from 39 lands on Chance (36)');
-  assert(
-    get().pendingCard?.type === 'chance',
-    'landing on a card tile via card move draws a follow-up card'
+  await waitFor(
+    () =>
+      get().players[1].position === 36 && get().pendingCard?.type === 'chance',
+    'Go back 3 from 39 lands on Chance (36) and draws a follow-up card'
   );
+  console.log(`  (Go back 3 from 39: P2 to ${get().players[1].position}, new card: ${get().pendingCard?.type ?? 'NONE'})`);
   useGameStore.setState({ pendingCard: null });
 
   // Go back 3 spaces from 33 -> Go To Jail (30): sent to jail, turn ends.
@@ -140,9 +167,15 @@ async function main(): Promise<void> {
   }));
   useGameStore.setState({ pendingCard: { type: 'chance', text: back3Text } });
   get().applyCardEffect();
+  await waitFor(
+    () =>
+      get().players[1].position === 10 &&
+      get().players[1].inJail &&
+      !get().isMoving,
+    'Go back 3 from 33 lands on Go To Jail and sends P2 to Jail'
+  );
   const jailState = get();
   console.log(`  (Go back 3 from 33: P2 at ${jailState.players[1].position}, inJail: ${jailState.players[1].inJail}, hasRolled: ${jailState.hasRolled})`);
-  assert(jailState.players[1].position === 10, 'Go back 3 from 33 lands on Go To Jail (30)');
   assert(jailState.players[1].inJail, 'player is sent to jail after the card move');
   assert(jailState.hasRolled === true, 'turn ends when sent to jail via card move');
 
