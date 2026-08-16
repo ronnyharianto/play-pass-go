@@ -406,6 +406,39 @@ async function main(): Promise<void> {
   );
   get().closeTrade();
 
+  // ---------------------------------------------------------------
+  console.log('\n[9] Dev-only manual dice override');
+  // The override only applies in development builds; simulate that here.
+  // (NODE_ENV is typed read-only, so cast to a writable view.)
+  const env = process.env as { NODE_ENV?: string };
+  const savedNodeEnv = env.NODE_ENV;
+  env.NODE_ENV = 'development';
+  get().resetGame();
+  get().addPlayer('P1', '🐶');
+  get().addPlayer('P2', '🎩');
+  get().startGame();
+  get().setManualDice([3, 5]);
+  assert(
+    get().manualDice?.[0] === 3 && get().manualDice?.[1] === 5,
+    'setManualDice stores the pending values in development'
+  );
+  get().rollDice();
+  // rollDice generates after a 600ms timeout - poll for the manual values.
+  await waitFor(
+    () => get().dice[0] === 3 && get().dice[1] === 5,
+    'manual dice [3,5] are used by the next roll'
+  );
+  assert(get().manualDice === null, 'manual dice are consumed after the roll');
+
+  // Production must ignore the override entirely.
+  env.NODE_ENV = 'production';
+  get().setManualDice([2, 2]);
+  assert(
+    get().manualDice === null,
+    'setManualDice is a no-op outside development'
+  );
+  env.NODE_ENV = savedNodeEnv ?? '';
+
   console.log(failures === 0 ? '\nAll bug-fix checks passed ✅' : `\n${failures} check(s) FAILED ❌`);
   process.exit(failures === 0 ? 0 : 1);
 }

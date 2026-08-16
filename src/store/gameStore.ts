@@ -74,6 +74,8 @@ interface GameState {
   players: Player[];
   currentPlayerIndex: number;
   dice: [number, number];
+  // Dev-only: when set, the next rollDice uses these values instead of random.
+  manualDice: [number, number] | null;
   isRolling: boolean;
   isMoving: boolean;
   movingPlayerId: string | null;
@@ -110,6 +112,7 @@ interface GameState {
   removePlayer: (id: string) => void;
   startGame: () => void;
   rollDice: () => void;
+  setManualDice: (dice: [number, number] | null) => void;
   endTurn: () => void;
   resetGame: () => void;
   buyProperty: (tileId: number) => void;
@@ -160,6 +163,7 @@ export const useGameStore = create<GameState>()(
     players: [],
     currentPlayerIndex: 0,
     dice: [1, 1],
+    manualDice: null,
     isRolling: false,
     isMoving: false,
     movingPlayerId: null,
@@ -345,8 +349,17 @@ export const useGameStore = create<GameState>()(
         set({ isRolling: true, declinedTile: null });
 
         setTimeout(() => {
-          const d1 = Math.floor(Math.random() * 6) + 1;
-          const d2 = Math.floor(Math.random() * 6) + 1;
+          // Dev-only manual dice override (consumed on this roll, then reset).
+          const manual = get().manualDice;
+          let d1: number;
+          let d2: number;
+          if (manual) {
+            [d1, d2] = manual;
+            set({ manualDice: null });
+          } else {
+            d1 = Math.floor(Math.random() * 6) + 1;
+            d2 = Math.floor(Math.random() * 6) + 1;
+          }
           const total = d1 + d2;
           const isDoubles = d1 === d2;
 
@@ -620,6 +633,14 @@ export const useGameStore = create<GameState>()(
 
           setTimeout(advance, stepInterval);
         }, 600);
+      },
+
+      setManualDice: (dice) => {
+        // Dev-only: the input UI is only rendered in development builds, but
+        // guard the store too so production can never be steered through this
+        // path even if something calls it.
+        if (process.env.NODE_ENV !== 'development') return;
+        set({ manualDice: dice });
       },
 
       declareBankruptcy: () => {
@@ -1100,6 +1121,7 @@ export const useGameStore = create<GameState>()(
           players: [],
           currentPlayerIndex: 0,
           dice: [1, 1],
+          manualDice: null,
           hasRolled: false,
           isRolling: false,
           isMoving: false,
@@ -1853,6 +1875,11 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: 'monopoly-game-storage',
+      // Never persist the dev-only dice override across reloads.
+      partialize: (state) => {
+        const { manualDice: _manualDice, ...rest } = state;
+        return rest;
+      },
     }
   )
 );
