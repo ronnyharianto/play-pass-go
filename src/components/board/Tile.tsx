@@ -182,11 +182,11 @@ function getPlayerBadgeColor(token: string): string {
     case '🚗': return '#3b82f6'; // blue
     case '🎩': return '#8b5cf6'; // purple
     case '🐶': return '#f59e0b'; // amber
-    case ' Th': return '#ec4899'; // pink
-    case '👢': return '#10b981'; // emerald
-    case '🚢': return '#6366f1'; // indigo
+    case '⛵': return '#ec4899'; // pink
     case '🐱': return '#ef4444'; // red
-    case '🦖': return '#14b8a6'; // teal
+    case '🦕': return '#14b8a6'; // teal
+    case '🏎️': return '#10b981'; // emerald
+    case '👑': return '#6366f1'; // indigo
     default: return '#64748b';
   }
 }

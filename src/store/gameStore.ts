@@ -1797,6 +1797,45 @@ export const useGameStore = create<GameState>()(
         const bidder = players.find((p) => p.id === bidderId);
         if (!bidder) return;
 
+        // The highest bidder is committed — they cannot pass. If they try,
+        // auto-award the win instead of removing them from the auction.
+        if (
+          bidderId === auction.highestBidderId &&
+          auction.currentBid > 0
+        ) {
+          const tile = BOARD_SPACES[auction.tileId];
+          const winnerIdx = players.findIndex((p) => p.id === bidderId);
+          if (winnerIdx === -1) return;
+
+          const updatedPlayers = players.map((p) => ({ ...p }));
+          const updatedProps: PropertiesMap = { ...properties };
+          updatedProps[auction.tileId] = {
+            owner: bidderId,
+            houses: 0,
+            isMortgaged: false,
+          };
+          updatedPlayers[winnerIdx] = {
+            ...updatedPlayers[winnerIdx],
+            cash: updatedPlayers[winnerIdx].cash - auction.currentBid,
+            properties: [...updatedPlayers[winnerIdx].properties, auction.tileId],
+          };
+
+          get().triggerPopup(`-$${auction.currentBid} Auction`, 'lose');
+          playSound('buy');
+          set({
+            players: updatedPlayers,
+            properties: updatedProps,
+            auction: {
+              ...auction,
+              phase: 'won',
+              winnerId: bidderId,
+              finalBid: auction.currentBid,
+            },
+            message: `${bidder.name} won the auction for ${tile.name} with a bid of $${auction.currentBid}!`,
+          });
+          return;
+        }
+
         const newActive = auction.activeBidders.filter((id) => id !== bidderId);
         const newPassed = [...auction.passedBidders, bidderId];
 
@@ -1877,9 +1916,19 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: 'monopoly-game-storage',
-      // Never persist the dev-only dice override across reloads.
+      // Never persist transient UI state across reloads — leaving
+      // isRolling or isMoving as true after a refresh would softlock the
+      // game because rollDice() early-returns when either flag is set.
       partialize: (state) => {
-        const { manualDice: _manualDice, ...rest } = state;
+        const {
+          manualDice: _manualDice,
+          isRolling: _isRolling,
+          isMoving: _isMoving,
+          movingPlayerId: _movingPlayerId,
+          movingStep: _movingStep,
+          transactionPopup: _transactionPopup,
+          ...rest
+        } = state;
         return rest;
       },
     }
