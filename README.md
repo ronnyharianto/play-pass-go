@@ -16,6 +16,8 @@
 
 Add 2–4 players on one device (desktop or tablet) and take turns — the device passes between players after each move. Each player picks a unique token, then it's classic property trading: roll, buy, pay rent, draw Chance cards, trade, and try not to go bankrupt.
 
+The landing page has a **Game Settings** panel for optional rules: turn auctions, trading, the Free Parking pot, and the Get Out of Jail Free cards on or off. Houses, hotels and mortgages are always enabled. Settings persist locally and apply to the **next** game you start — a game already in progress keeps the rules it began with.
+
 ## Tech stack
 
 | Layer | Choice |
@@ -39,6 +41,14 @@ npm run dev
 ```
 
 Open http://localhost:3000 — add players and start playing.
+
+### Testing from another device (iPad, LAN, tunnel)
+
+Next.js blocks cross-origin dev assets by default. The symptom is a page that renders but where **no button responds**, because the client JavaScript was refused. Allow whatever host you reach the dev server on (comma-separated, no protocol):
+
+```bash
+ALLOWED_DEV_ORIGINS=192.168.1.20:3000,my-tunnel.example.com npm run dev
+```
 
 ## Roadmap
 

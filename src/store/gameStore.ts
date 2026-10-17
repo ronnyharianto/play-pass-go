@@ -18,8 +18,47 @@ import {
   StatePatch as ChestStatePatch,
 } from '../engine/communityChestCards';
 import { playSound, initSounds } from '../utils/sounds';
+import {
+  DEFAULT_GAME_SETTINGS,
+  GameSettings,
+} from '../engine/gameSettings';
 
 initSounds();
+
+/**
+ * Builds a shuffled Chance deck for the current settings. With the
+ * Get Out of Jail Free feature off, the jail-free card is removed entirely so
+ * no player can ever draw (and therefore receive) one.
+ */
+function buildChanceDeck(settings: GameSettings): typeof CHANCE_CARDS {
+  const deck = shuffleChanceDeck();
+  return settings.jailFreeCards
+    ? deck
+    : deck.filter((card) => !card.grantsJailFreeCard);
+}
+
+/** Community Chest counterpart of buildChanceDeck. */
+function buildCommunityChestDeck(
+  settings: GameSettings
+): typeof COMMUNITY_CHEST_CARDS {
+  const deck = shuffleCommunityChestDeck();
+  return settings.jailFreeCards
+    ? deck
+    : deck.filter((card) => !card.grantsJailFreeCard);
+}
+
+/**
+ * Card definitions describe shortfalls as owed to the Free Parking pot. When
+ * the pot is disabled that money goes to the bank, so the wording is corrected
+ * here instead of editing every card that mentions the pot.
+ */
+function normalizePotMessage(
+  message: string | undefined,
+  settings: GameSettings
+): string | undefined {
+  if (settings.freeParking || !message) return message;
+  return message.replace(/Free Parking pot/g, 'bank');
+}
 
 export interface Player {
   id: string;
@@ -71,6 +110,17 @@ export interface AuctionState {
 
 interface GameState {
   gamePhase: 'setup' | 'playing' | 'ended';
+  /**
+   * Optional rule features chosen on the landing page. Persisted with the game
+   * so a refresh keeps the rules the game started with.
+   */
+  settings: GameSettings;
+  /**
+   * The rules the game in progress started with, frozen by startGame. In-game
+   * behaviour reads this (never `settings`), so the landing-page toggles can be
+   * changed at any time without altering a game that is already running.
+   */
+  activeRules: GameSettings;
   players: Player[];
   currentPlayerIndex: number;
   dice: [number, number];
@@ -108,6 +158,8 @@ interface GameState {
   declinedTile: number | null;
 
   // Actions
+  setSetting: (key: keyof GameSettings, enabled: boolean) => void;
+  resetSettings: () => void;
   addPlayer: (name: string, token: string) => void;
   removePlayer: (id: string) => void;
   startGame: () => void;
@@ -160,6 +212,8 @@ export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
     gamePhase: 'setup',
+    settings: { ...DEFAULT_GAME_SETTINGS },
+    activeRules: { ...DEFAULT_GAME_SETTINGS },
     players: [],
     currentPlayerIndex: 0,
     dice: [1, 1],
@@ -184,15 +238,34 @@ export const useGameStore = create<GameState>()(
     trade: null,
     auction: null,
     handoff: null,
-    declinedTile: null,
-  
-    triggerPopup: (text, type) => {
+    declinedTile: null,      triggerPopup: (text, type) => {
         set({ transactionPopup: { id: Date.now(), text, type } });
         setTimeout(() => {
           if (get().transactionPopup?.id) {
             set({ transactionPopup: null });
           }
         }, 2500);
+      },
+
+      /**
+       * Landing-page toggles, describing the NEXT game. They are always
+       * editable: startGame snapshots them into `activeRules`, so a game already
+       * in progress keeps the rules it started with no matter what is toggled.
+       */
+      setSetting: (key, enabled) => {
+        const playing = get().gamePhase === 'playing';
+        set({
+          settings: { ...get().settings, [key]: enabled },
+          // Never leave a stale pot behind when the rule is switched off - but
+          // leave a running game's pot alone, it still plays by activeRules.
+          ...(key === 'freeParking' && !enabled && !playing
+            ? { freeParkingPot: 0 }
+            : {}),
+        });
+      },
+
+      resetSettings: () => {
+        set({ settings: { ...DEFAULT_GAME_SETTINGS } });
       },
 
       addPlayer: (name, token) => {
@@ -224,7 +297,9 @@ export const useGameStore = create<GameState>()(
       },
 
       startGame: () => {
-        const { players } = get();
+        const { players, settings } = get();
+        // Freeze the landing-page choices into the rules this game runs with.
+        const activeRules = { ...settings };
         if (players.length < 2) return;
         // Save players to preserve them after reset
         const savedPlayers = players.map((player) => ({
@@ -244,8 +319,9 @@ export const useGameStore = create<GameState>()(
           players: savedPlayers,
           currentPlayerIndex: 0,
           hasRolled: false,
-          chanceDeck: shuffleChanceDeck(),
-          communityChestDeck: shuffleCommunityChestDeck(),
+          activeRules,
+          chanceDeck: buildChanceDeck(activeRules),
+          communityChestDeck: buildCommunityChestDeck(activeRules),
           pendingCard: null,
           freeParkingPot: 0,
           trade: null,
@@ -515,8 +591,11 @@ export const useGameStore = create<GameState>()(
                   ...updated[currentPlayerIndex],
                   cash: currentCash - paid,
                 };
-                // Only the actually-paid portion goes into the Free Parking pot
-                set((s) => ({ freeParkingPot: s.freeParkingPot + paid }));
+                // Only the actually-paid portion goes into the Free Parking
+                // pot, and only while that rule is enabled.
+                if (get().activeRules.freeParking) {
+                  set((s) => ({ freeParkingPot: s.freeParkingPot + paid }));
+                }
                 if (paid > 0) {
                   get().triggerPopup(`-$${paid} Tax`, 'lose');
                   playSound('pay');
@@ -534,13 +613,16 @@ export const useGameStore = create<GameState>()(
                     showDebtResolution: true,
                     debtAmount: unpaid,
                     debtOwedTo: 'pot',
-                    message: `${player.name} could not afford the full ${landedTile.name} - $${unpaid} is still owed to the Free Parking pot.`,
+                    message: `${player.name} could not afford the full ${landedTile.name} - $${unpaid} is still owed to ${get().activeRules.freeParking ? 'the Free Parking pot' : 'the bank'}.`,
                   });
                   return;
                 }
                 updatedMessage = `${player.name} paid $${paid} in ${landedTile.name}.`;
               } else if (landedTile.type === 'freeparking') {
-                const currentPot = get().freeParkingPot;
+                // A disabled pot never holds or pays out money.
+                const currentPot = get().activeRules.freeParking
+                  ? get().freeParkingPot
+                  : 0;
                 if (currentPot > 0) {
                   updated[currentPlayerIndex] = {
                     ...updated[currentPlayerIndex],
@@ -551,7 +633,9 @@ export const useGameStore = create<GameState>()(
                   updatedMessage = `${player.name} collected $${currentPot} from Free Parking!`;
                   set({ freeParkingPot: 0 });
                 } else {
-                  updatedMessage = `${player.name} landed on Free Parking (pot is empty).`;
+                  updatedMessage = get().activeRules.freeParking
+                    ? `${player.name} landed on Free Parking (pot is empty).`
+                    : `${player.name} landed on Free Parking (no effect - the Free Parking pot is off).`;
                 }
               } else if (landedTile.type === 'chance') {
                 playSound('card');
@@ -774,8 +858,9 @@ export const useGameStore = create<GameState>()(
 
         let potCredit = 0;
         if (debtOwedTo === 'pot') {
-          // Debt owed to the Free Parking pot (card / tax shortfalls)
-          potCredit = capped;
+          // Debt owed to the Free Parking pot (card / tax shortfalls). With the
+          // pot disabled the payment goes to the bank instead.
+          potCredit = get().activeRules.freeParking ? capped : 0;
         } else if (debtOwedTo) {
           const ownerIndex = updatedPlayers.findIndex(
             (p) => p.id === debtOwedTo
@@ -1087,7 +1172,8 @@ export const useGameStore = create<GameState>()(
             tile.type === 'utility') &&
           (!prop || !prop.owner) &&
           declinedTile !== tile.id;
-        if (isUnownedToAuction) {
+        // Skipped when auctions are disabled - then End Turn simply passes.
+        if (isUnownedToAuction && get().activeRules.auctions) {
           get().startAuction(tile.id);
           return;
         }
@@ -1118,6 +1204,8 @@ export const useGameStore = create<GameState>()(
       resetGame: () => {
         set({
           gamePhase: 'setup',
+          // No game is running, so nothing is frozen any more.
+          activeRules: { ...DEFAULT_GAME_SETTINGS },
           players: [],
           currentPlayerIndex: 0,
           dice: [1, 1],
@@ -1151,7 +1239,7 @@ export const useGameStore = create<GameState>()(
         // Standard Monopoly rule: once the deck runs out, reshuffle the full
         // set so cards never silently vanish.
         if (chanceDeck.length === 0) {
-          chanceDeck = shuffleChanceDeck();
+          chanceDeck = buildChanceDeck(get().activeRules);
         }
         const [top, ...rest] = chanceDeck;
         set({
@@ -1163,7 +1251,7 @@ export const useGameStore = create<GameState>()(
       drawCommunityChestCard: () => {
         let { communityChestDeck } = get();
         if (communityChestDeck.length === 0) {
-          communityChestDeck = shuffleCommunityChestDeck();
+          communityChestDeck = buildCommunityChestDeck(get().activeRules);
         }
         const [top, ...rest] = communityChestDeck;
         set({
@@ -1179,6 +1267,7 @@ export const useGameStore = create<GameState>()(
           currentPlayerIndex,
           properties,
           freeParkingPot,
+          activeRules,
         } = get();
         if (!pendingCard) return;
     
@@ -1216,7 +1305,10 @@ export const useGameStore = create<GameState>()(
           return;
         }        const updatedPlayers: Player[] = (patch as ChanceStatePatch | ChestStatePatch).players ?? players;
         const updatedProps: PropertiesMap = (patch as ChanceStatePatch | ChestStatePatch).properties ?? properties;
-        const updatedPot = patch.freeParkingPot ?? freeParkingPot;
+        // A disabled Free Parking pot never accumulates: card fees go to the bank.
+        const updatedPot = activeRules.freeParking
+          ? patch.freeParkingPot ?? freeParkingPot
+          : 0;
         const unpaidDebt =
           (patch as ChanceStatePatch | ChestStatePatch).unpaidDebt ?? 0;
         // Being sent to jail via a card also ends the turn immediately.
@@ -1248,7 +1340,7 @@ export const useGameStore = create<GameState>()(
             players: updatedPlayers,
             properties: updatedProps,
             freeParkingPot: Math.max(0, updatedPot),
-            message: patch.message ?? get().message,
+            message: normalizePotMessage(patch.message, activeRules) ?? get().message,
             pendingCard: null,
             hasRolled: jailedByCard ? true : get().hasRolled,
             isMoving: false,
@@ -1264,7 +1356,7 @@ export const useGameStore = create<GameState>()(
             nextCardState.debtAmount = unpaidDebt;
             nextCardState.debtOwedTo = 'pot';
             if (!jailedByCard) {
-              nextCardState.message = `${nextCardState.message} ${updatedPlayers[currentPlayerIndex]?.name ?? 'Player'} owes $${unpaidDebt} to the Free Parking pot.`;
+              nextCardState.message = `${nextCardState.message} ${updatedPlayers[currentPlayerIndex]?.name ?? 'Player'} owes $${unpaidDebt} to ${activeRules.freeParking ? 'the Free Parking pot' : 'the bank'}.`;
             }
           }
 
@@ -1398,8 +1490,11 @@ export const useGameStore = create<GameState>()(
             ...updated[playerIndex],
             cash: player.cash - paid,
           };
-          // Only the actually-paid portion goes into the Free Parking pot.
-          set((s) => ({ freeParkingPot: s.freeParkingPot + paid }));
+          // Only the actually-paid portion goes into the Free Parking pot, and
+          // only while that rule is enabled.
+          if (get().activeRules.freeParking) {
+            set((s) => ({ freeParkingPot: s.freeParkingPot + paid }));
+          }
           if (paid > 0) {
             get().triggerPopup(`-$${paid} Tax`, 'lose');
             playSound('pay');
@@ -1412,7 +1507,7 @@ export const useGameStore = create<GameState>()(
               showDebtResolution: true,
               debtAmount: unpaid,
               debtOwedTo: 'pot',
-              message: `${player.name} could not afford the full ${tile.name} - $${unpaid} is still owed to the Free Parking pot.`,
+              message: `${player.name} could not afford the full ${tile.name} - $${unpaid} is still owed to ${get().activeRules.freeParking ? 'the Free Parking pot' : 'the bank'}.`,
             });
             return;
           }
@@ -1424,7 +1519,7 @@ export const useGameStore = create<GameState>()(
         }
 
         if (tile.type === 'freeparking') {
-          const pot = get().freeParkingPot;
+          const pot = get().activeRules.freeParking ? get().freeParkingPot : 0;
           if (pot > 0) {
             const updated = [...players];
             updated[playerIndex] = {
@@ -1496,6 +1591,9 @@ export const useGameStore = create<GameState>()(
       },
     
       useGetOutOfJailCard: () => {
+        // No jail-free cards exist while the feature is off - never could be
+        // held, but guard the action so a stale save cannot bypass it.
+        if (!get().activeRules.jailFreeCards) return;
         const { players, currentPlayerIndex } = get();
         const player = players[currentPlayerIndex];
         if (!player || !player.inJail || (player.getOutOfJailCards ?? 0) <= 0) return;
@@ -1533,6 +1631,7 @@ export const useGameStore = create<GameState>()(
       },
 
       startTrade: () => {
+        if (!get().activeRules.trading) return;
         const {
           players,
           currentPlayerIndex,
@@ -1710,6 +1809,7 @@ export const useGameStore = create<GameState>()(
       },
 
       startAuction: (tileId) => {
+        if (!get().activeRules.auctions) return;
         const {
           players,
           currentPlayerIndex,
@@ -1930,6 +2030,27 @@ export const useGameStore = create<GameState>()(
           ...rest
         } = state;
         return rest;
+      },
+      // The default shallow merge would treat a persisted `settings` object as
+      // a full replacement, so a save written before a new feature existed
+      // would leave that feature `undefined` (silently off). Merging the
+      // stored flags over the defaults keeps every future rule on its default.
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<GameState> | undefined;
+        return {
+          ...currentState,
+          ...persisted,
+          settings: {
+            ...DEFAULT_GAME_SETTINGS,
+            ...(persisted?.settings ?? {}),
+          },
+          // Same reasoning for the running game's frozen rules: an older save
+          // must not leave a newly added rule undefined (silently off).
+          activeRules: {
+            ...DEFAULT_GAME_SETTINGS,
+            ...(persisted?.activeRules ?? {}),
+          },
+        } as GameState;
       },
     }
   )

@@ -29,6 +29,9 @@ export const CenterPanel: React.FC = () => {
   const trade = useGameStore((s) => s.trade);
   const auction = useGameStore((s) => s.auction);
   const transactionPopup = useGameStore((s) => s.transactionPopup);
+  // The rules this game started with (frozen at startGame) — the landing-page
+  // toggles describe the NEXT game and must not change what is on screen here.
+  const rules = useGameStore((s) => s.activeRules);
 
   const rollDice = useGameStore((s) => s.rollDice);
   const endTurn = useGameStore((s) => s.endTurn);
@@ -70,7 +73,12 @@ export const CenterPanel: React.FC = () => {
     !isMoving && !showDebtResolution && !auction && !trade && isBuyable,
   );
 
+  // Ending the turn only sends an unowned tile to auction while that rule is
+  // enabled; otherwise the tile simply stays with the bank.
+  const willAuctionOnEndTurn = isAuctionable && rules.auctions;
+
   const canTrade = Boolean(
+    rules.trading &&
     !isRolling &&
     !isMoving &&
     !showDebtResolution &&
@@ -86,14 +94,25 @@ export const CenterPanel: React.FC = () => {
         <span className="text-amber-300 font-extrabold tracking-wider text-sm sm:text-xl drop-shadow-md shrink-0">
           PLAY, PASS & GO
         </span>
-        <div className="flex items-center justify-center gap-1.5 bg-slate-900/70 border border-slate-700 rounded-lg px-2.5 sm:px-3 py-1 sm:py-1.5 min-w-0">
-          <span className="text-[10px] sm:text-sm font-bold text-slate-300 uppercase tracking-wider">
-            🅿️<span className="hidden sm:inline"> Free Parking Pot</span>
-          </span>
-          <span className="text-xs sm:text-lg font-extrabold text-emerald-400">
-            ${freeParkingPot}
-          </span>
-        </div>
+        {rules.freeParking ? (
+          <div className="flex items-center justify-center gap-1.5 bg-slate-900/70 border border-slate-700 rounded-lg px-2.5 sm:px-3 py-1 sm:py-1.5 min-w-0">
+            <span className="text-[10px] sm:text-sm font-bold text-slate-300 uppercase tracking-wider">
+              🅿️<span className="hidden sm:inline"> Free Parking Pot</span>
+            </span>
+            <span className="text-xs sm:text-lg font-extrabold text-emerald-400">
+              ${freeParkingPot}
+            </span>
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-1.5 bg-slate-900/50 border border-slate-800 rounded-lg px-2.5 sm:px-3 py-1 sm:py-1.5 min-w-0"
+            title="The Free Parking pot is disabled for this game"
+          >
+            <span className="text-[10px] sm:text-sm font-bold text-slate-400 uppercase tracking-wider">
+              🅿️<span className="hidden sm:inline"> Pot off</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Player status cards — stretch to fill the center space */}
@@ -196,7 +215,8 @@ export const CenterPanel: React.FC = () => {
                 >
                   Pay $50 Bail
                 </button>
-                {(currentPlayer.getOutOfJailCards ?? 0) > 0 && (
+                {rules.jailFreeCards &&
+                  (currentPlayer.getOutOfJailCards ?? 0) > 0 && (
                   <button
                     onClick={useGetOutOfJailCard}
                     disabled={isRolling || isMoving || showDebtResolution}
@@ -262,22 +282,24 @@ export const CenterPanel: React.FC = () => {
               }
               className={cn(
                 "px-5 sm:px-6 py-2 sm:py-2.5 disabled:opacity-50 text-white font-bold rounded-lg shadow-md transition-all active:scale-95 text-sm sm:text-base cursor-pointer",
-                isAuctionable
+                willAuctionOnEndTurn
                   ? "bg-cyan-600 hover:bg-cyan-500"
                   : "bg-slate-700 hover:bg-slate-600",
               )}
             >
-              {isAuctionable ? "End Turn & Auction" : "End Turn"}
+              {willAuctionOnEndTurn ? "End Turn & Auction" : "End Turn"}
             </button>
           )}
 
-          <button
-            onClick={startTrade}
-            disabled={!canTrade}
-            className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold rounded-lg shadow-md transition-all active:scale-95 text-sm sm:text-base cursor-pointer"
-          >
-            Trade
-          </button>
+          {rules.trading && (
+            <button
+              onClick={startTrade}
+              disabled={!canTrade}
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold rounded-lg shadow-md transition-all active:scale-95 text-sm sm:text-base cursor-pointer"
+            >
+              Trade
+            </button>
+          )}
 
           {isAuctionable && canBuy && (
             <button
@@ -293,8 +315,12 @@ export const CenterPanel: React.FC = () => {
         {isAuctionable && (
           <p className="text-[9px] sm:text-xs text-cyan-200/90 font-medium text-center">
             {canBuy
-              ? `Buy ${currentTile.name} or end your turn — ending your turn sends it to auction.`
-              : `You can't afford ${currentTile.name} — ending your turn sends it to auction.`}
+              ? willAuctionOnEndTurn
+                ? `Buy ${currentTile.name} or end your turn — ending your turn sends it to auction.`
+                : `Buy ${currentTile.name} or end your turn — the property stays with the bank.`
+              : willAuctionOnEndTurn
+                ? `You can't afford ${currentTile.name} — ending your turn sends it to auction.`
+                : `You can't afford ${currentTile.name} — end your turn to pass.`}
           </p>
         )}
       </div>

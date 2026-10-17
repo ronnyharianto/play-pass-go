@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+import { GameSettingsPanel } from '../components/lobby/GameSettingsPanel';
 import { useRouter } from 'next/navigation';
 
 const AVAILABLE_TOKENS = ['🚗', '🎩', '🐶', '⛵', '🐱', '🦕', '🏎️', '👑'];
@@ -46,7 +47,7 @@ export default function LobbyPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] w-full max-w-xl mx-auto p-4">
+    <div className="flex flex-col items-center justify-center min-h-[80vh] w-full max-w-xl mx-auto p-4 py-8">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 sm:p-8 shadow-2xl w-full">
         <h1 className="text-3xl font-extrabold text-center text-amber-300 mb-2">
           Play, Pass & Go
@@ -166,6 +167,9 @@ export default function LobbyPage() {
           Resume the Last Game
         </button>
       </div>
+
+      {/* Optional rule features for the next game */}
+      <GameSettingsPanel />
     </div>
   );
 }
