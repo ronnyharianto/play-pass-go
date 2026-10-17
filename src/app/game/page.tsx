@@ -26,6 +26,8 @@ export default function GamePage() {
     players,
     currentPlayerIndex,
     gamePhase,
+    // Rules frozen when this game started (the lobby toggles are for the next one).
+    activeRules,
     resetGame,
     properties,
     buildHouse,
@@ -103,8 +105,8 @@ export default function GamePage() {
 
         {/* Modals */}
         <CardModal />
-        <TradeModal />
-        <AuctionModal />
+        {activeRules.trading && <TradeModal />}
+        {activeRules.auctions && <AuctionModal />}
 
         {/* Pass & Play turn-handoff overlay (top-most) */}
         <PassAndPlayScreen />

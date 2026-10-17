@@ -32,6 +32,8 @@ export interface StatePatch {
 export interface ChanceCard {
   id: number;
   text: string;
+  /** Marks the jail-free card so the Get Out of Jail Free setting can filter it out of the deck. */
+  grantsJailFreeCard?: true;
   getStatePatch: (
     playerId: string,
     players: Array<{
@@ -165,6 +167,7 @@ export const CHANCE_CARDS: ChanceCard[] = [
   {
     id: 7,
     text: 'You have been awarded a Get Out of Jail Free card!',
+    grantsJailFreeCard: true,
     getStatePatch: (playerId, players) => {
       const updated = players.map((p) =>
         p.id === playerId ? { ...p, getOutOfJailCards: (p.getOutOfJailCards || 0) + 1 } : p,
